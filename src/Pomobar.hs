@@ -147,19 +147,17 @@ timerRefreshThread timer@(Timer mvarState timerConfig) = do
   if durDiff <= 0
     then terminateTimer timer
     else do putStrLn $ formatOutput durDiff (status state) timerConfig
-            threadDelay $ delay durDiff
+            threadDelay 1000000
             timerRefreshThread timer
-            where delay durDiff
-                    | durDiff <= 60 = 1000000
-                    | otherwise     = ((durDiff `rem` 60) + 1) * 1000000
 
 formatOutput :: Int -> TimerStatus -> TimerConfig -> String
-formatOutput x s c = xmobarString (printf "%02d" number) (fgColour s) (bgColour s) where
+formatOutput x s c = xmobarString (printf "%02d:%02d" number number_s) (fgColour s) (bgColour s) where
   number :: Int
   number
-    | x >= 60   = floor (fromIntegral x / 60)
-    | x < 0     = 0
-    | otherwise = x
+    | x >= 0 = floor (fromIntegral x / 60)
+    | x < 0  = 0
+  number_s :: Int
+  number_s = fromIntegral (x `rem` 60)
   fgColour Paused = pausedFgColour c
   fgColour Running
     | x >= 60   = runningFgColour c
