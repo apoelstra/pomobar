@@ -24,7 +24,7 @@ data TimerState = TimerState {
   refreshThread :: MVar ThreadId
 }
 
-data TimerStatus = Running | Paused | Terminated deriving Eq
+data TimerStatus = Running | Paused | Terminated | LockedOut deriving Eq
 
 data Timer = Timer (MVar TimerState) TimerConfig
 
@@ -117,6 +117,8 @@ timerAdd timer@(Timer mvarState timerConfig) x = do
         Terminated -> do
           putMVar mvarState newState
           startTimer timer diffSec
+        LockedOut -> do
+          return ()
 
 resumeTimer :: Timer -> IO ()
 resumeTimer timer@(Timer mvarState _) = do
@@ -126,11 +128,17 @@ resumeTimer timer@(Timer mvarState _) = do
     _      -> return ()
 
 terminateTimer :: Timer -> IO ()
-terminateTimer (Timer mvarState timerConfig) = do
+terminateTimer timer@(Timer mvarState timerConfig) = do
   state <- takeMVar mvarState
-  putMVar mvarState $ state { status = Terminated }
-  executeCmd $ terminatedShellCmd timerConfig
-  forM_ [0,(-1)..(-20)] blink
+  if (status state) == LockedOut
+  then do
+    putMVar mvarState $ state { status = Terminated }
+    executeCmd $ terminatedShellCmd timerConfig
+    forM_ [0,(-1)..(-20)] blink
+  else do
+    now <- getCurrentTime
+    putMVar mvarState $ state { status = LockedOut, duration = 300, started = now }
+    timerRefreshThread timer
   where blink x = do
           putStrLn $ formatOutput x Terminated timerConfig
           threadDelay $ delay $ terminatedBgDelay timerConfig
@@ -159,6 +167,7 @@ formatOutput x s c = xmobarString (printf "%02d:%02d" number number_s) (fgColour
   number_s :: Int
   number_s = fromIntegral (x `rem` 60)
   fgColour Paused = pausedFgColour c
+  fgColour LockedOut = pausedFgColour c
   fgColour Running
     | x >= 180   = runningFgColour c
     | otherwise = terminatingFgColour c
@@ -190,15 +199,22 @@ startDBus timer@(Timer mvarState _) = do
             Paused  -> resumeTimer timer
             _       -> return ()
         dbusTimerAdd :: Int16 -> IO()
-        dbusTimerAdd = timerAdd timer . fromIntegral
+        dbusTimerAdd n = do
+          state <- readMVar mvarState
+          case (status state) of
+            LockedOut -> return ()
+            _         -> timerAdd timer $ fromIntegral n
         dbusStartTimerSwitch :: MVar Int -> [Int16] -> IO ()
         dbusStartTimerSwitch switchState xs = do
           now <- getCurrentTime
           state <- readMVar mvarState
-          i <- if (diffUTCTime now (started state)) > 1.0
-                 then swapMVar switchState 0 >> return 0
-                 else modifyMVar switchState (\x -> return (x+1,x+1))
-          startTimer timer $ (60 *) $ fromIntegral $ (cycle xs) !! i
+          case (status state) of
+            LockedOut -> return ()
+            _         -> do
+              i <- if (diffUTCTime now (started state)) > 1.0
+                     then swapMVar switchState 0 >> return 0
+                     else modifyMVar switchState (\x -> return (x+1,x+1))
+              startTimer timer $ (60 *) $ fromIntegral $ (cycle xs) !! i
 
 xmobarString :: String -> Maybe String -> Maybe String -> String
 xmobarString s Nothing _ = s
