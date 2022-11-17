@@ -59,7 +59,7 @@ initialise timerConfig = do
   hSetBuffering stdout LineBuffering
   timer <- newTimer timerConfig
   startDBus timer
-  putStrLn "Pb"
+  putStrLn "[pomobar]"
   waitForever
 
 newTimer :: TimerConfig -> IO Timer
