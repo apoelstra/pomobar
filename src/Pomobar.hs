@@ -167,12 +167,13 @@ formatOutput x s c = xmobarString (printf "%02d:%02d" number number_s) (fgColour
   number_s :: Int
   number_s = fromIntegral (x `rem` 60)
   fgColour Paused = pausedFgColour c
-  fgColour LockedOut = pausedFgColour c
   fgColour Running
     | x >= 180   = runningFgColour c
     | otherwise = terminatingFgColour c
   fgColour Terminated = if x `rem` 2 == 0 then terminatedFg1Colour c else terminatedFg2Colour c
+  fgColour LockedOut  = Just "black"
   bgColour Terminated = if x `rem` 2 == 0 then terminatedBg1Colour c else terminatedBg2Colour c
+  bgColour LockedOut  = Just "#DDBB00"
   bgColour _          = Nothing
 
 calculateRemaining :: UTCTime -> TimerState -> Int
